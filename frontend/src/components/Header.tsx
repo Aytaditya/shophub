@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { ShoppingCart, Search, Menu, X, User } from 'lucide-react';
 import { useCart } from '../contexts/CartContext';
+import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react'
 
 const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -34,20 +35,20 @@ const Header: React.FC = () => {
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex space-x-8">
-            <Link 
-              to="/" 
+            <Link
+              to="/"
               className="text-gray-700 hover:text-blue-600 transition-colors duration-200"
             >
               Home
             </Link>
-            <Link 
-              to="/products" 
+            <Link
+              to="/products"
               className="text-gray-700 hover:text-blue-600 transition-colors duration-200"
             >
               Products
             </Link>
-            <Link 
-              to="/categories" 
+            <Link
+              to="/categories"
               className="text-gray-700 hover:text-blue-600 transition-colors duration-200"
             >
               Categories
@@ -78,9 +79,15 @@ const Header: React.FC = () => {
               whileHover={{ scale: 1.05 }}
               className="p-2 text-gray-700 hover:text-blue-600 transition-colors duration-200"
             >
-              <User className="h-6 w-6" />
+              {/* <User className="h-6 w-6" /> */}
+              <SignedOut>
+                <SignInButton />
+              </SignedOut>
+              <SignedIn>
+                <UserButton />
+              </SignedIn>
             </motion.button>
-            
+
             <Link to="/cart" className="relative">
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -118,28 +125,28 @@ const Header: React.FC = () => {
             className="md:hidden border-t border-gray-200 py-4"
           >
             <nav className="flex flex-col space-y-4">
-              <Link 
-                to="/" 
+              <Link
+                to="/"
                 className="text-gray-700 hover:text-blue-600 transition-colors duration-200"
                 onClick={() => setIsMenuOpen(false)}
               >
                 Home
               </Link>
-              <Link 
-                to="/products" 
+              <Link
+                to="/products"
                 className="text-gray-700 hover:text-blue-600 transition-colors duration-200"
                 onClick={() => setIsMenuOpen(false)}
               >
                 Products
               </Link>
-              <Link 
-                to="/categories" 
+              <Link
+                to="/categories"
                 className="text-gray-700 hover:text-blue-600 transition-colors duration-200"
                 onClick={() => setIsMenuOpen(false)}
               >
                 Categories
               </Link>
-              
+
               {/* Mobile Search */}
               <form onSubmit={handleSearch} className="relative">
                 <input

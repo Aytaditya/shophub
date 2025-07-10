@@ -6,6 +6,7 @@ import { useState, useRef, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { X, Send, Bot, User, Minimize2, Maximize2 } from "lucide-react"
 import ReactMarkdown from "react-markdown"
+import { useUser, SignInButton } from "@clerk/clerk-react"
 
 interface Message {
   id: number
@@ -20,6 +21,8 @@ interface QuickReply {
 }
 
 const Chatbot: React.FC = () => {
+  const { isSignedIn } = useUser()
+
   const [isOpen, setIsOpen] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
   const [messages, setMessages] = useState<Message[]>([
@@ -115,6 +118,26 @@ const Chatbot: React.FC = () => {
     handleSendMessage(reply.query)
   }
 
+  // If not signed in, show Sign-In button instead of chatbot
+  if (!isSignedIn) {
+    return (
+      <motion.button
+        initial={{ scale: 0 }}
+        animate={{ scale: 1 }}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+        className="fixed bottom-6 right-6 z-50 p-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-full shadow-2xl hover:shadow-3xl transition-all duration-300"
+      >
+        <SignInButton mode="modal">
+          <div className="flex items-center gap-2 cursor-pointer">
+            <Bot className="h-5 w-5" />
+            <span className="text-sm">Sign in to chat</span>
+          </div>
+        </SignInButton>
+      </motion.button>
+    )
+  }
+
   return (
     <>
       {/* Chat Button */}
@@ -135,19 +158,15 @@ const Chatbot: React.FC = () => {
         {isOpen && (
           <motion.div
             initial={{ opacity: 0, scale: 0.8, y: 20 }}
-            animate={{
-              opacity: 1,
-              scale: 1,
-              y: 0,
-            }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.8, y: 20 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
             className={`fixed bottom-6 right-6 z-50 w-96 sm:w-[28rem] lg:w-[32rem] bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl overflow-hidden ${
               isMinimized ? "h-16" : "h-[580px]"
             }`}
           >
-            {/* Header - Always visible */}
-            <div className="p-4 border-b border-white/20 bg-gradient-to-r from-blue-600/80 to-purple-600/80 backdrop-blur-sm text-white flex justify-between items-center flex-shrink-0">
+            {/* Header */}
+            <div className="p-4 border-b border-white/20 bg-gradient-to-r from-blue-600/80 to-purple-600/80 backdrop-blur-sm text-white flex justify-between items-center">
               <div className="flex items-center gap-3">
                 <div className="bg-white/20 rounded-full w-10 h-10 flex items-center justify-center backdrop-blur-sm">
                   <Bot className="h-5 w-5" />
@@ -164,13 +183,16 @@ const Chatbot: React.FC = () => {
                 >
                   {isMinimized ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-4 h-4" />}
                 </button>
-                <button onClick={() => setIsOpen(false)} className="p-1 hover:bg-white/20 rounded-lg transition-colors">
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className="p-1 hover:bg-white/20 rounded-lg transition-colors"
+                >
                   <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            {/* Content Area - Only visible when not minimized */}
+            {/* Chat Content */}
             {!isMinimized && (
               <div className="flex flex-col h-[calc(100%-80px)]">
                 {/* Messages */}
@@ -184,7 +206,9 @@ const Chatbot: React.FC = () => {
                       className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}
                     >
                       <div
-                        className={`flex items-start space-x-2 max-w-[85%] ${message.sender === "user" ? "flex-row-reverse space-x-reverse" : ""}`}
+                        className={`flex items-start space-x-2 max-w-[85%] ${
+                          message.sender === "user" ? "flex-row-reverse space-x-reverse" : ""
+                        }`}
                       >
                         <div
                           className={`w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-sm ${
@@ -214,7 +238,9 @@ const Chatbot: React.FC = () => {
                             {message.text}
                           </ReactMarkdown>
                           <p
-                            className={`text-xs mt-1 ${message.sender === "user" ? "text-blue-100" : "text-gray-600"}`}
+                            className={`text-xs mt-1 ${
+                              message.sender === "user" ? "text-blue-100" : "text-gray-600"
+                            }`}
                           >
                             {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                           </p>
@@ -247,7 +273,7 @@ const Chatbot: React.FC = () => {
                           key={index}
                           onClick={() => handleQuickReply(reply)}
                           className="px-3 py-1 text-xs bg-blue-500/20 text-blue-800 rounded-full hover:bg-blue-500/30 transition-colors backdrop-blur-sm border border-blue-500/30"
-                          title={reply.query} // Shows the actual query on hover
+                          title={reply.query}
                         >
                           {reply.display}
                         </button>
