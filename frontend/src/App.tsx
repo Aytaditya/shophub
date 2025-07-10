@@ -7,6 +7,7 @@ import Home from './pages/Home';
 import Products from './pages/Products';
 import ProductDetail from './pages/ProductDetail';
 import Cart from './pages/Cart';
+import Chatbot from './components/Chatbot';
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
               <Route path="/cart" element={<Cart />} />
               <Route path="/categories" element={<Products />} />
             </Routes>
+            <Chatbot/>
           </main>
           <Footer />
         </div>

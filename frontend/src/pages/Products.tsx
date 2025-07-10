@@ -300,7 +300,7 @@ const Products: React.FC = () => {
                     value={priceRange.min}
                     onChange={(e) => setPriceRange(prev => ({ ...prev, min: Number(e.target.value) }))}
                     placeholder="Min"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm w-[50px]"
                   />
                   <span className="text-gray-500">-</span>
                   <input
@@ -308,7 +308,7 @@ const Products: React.FC = () => {
                     value={priceRange.max}
                     onChange={(e) => setPriceRange(prev => ({ ...prev, max: Number(e.target.value) }))}
                     placeholder="Max"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm w-[50px]"
                   />
                 </div>
               </div>
