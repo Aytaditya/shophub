@@ -22,7 +22,7 @@ const Home: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-blue-600 via-purple-600 to-blue-800 text-white">
+      <section className="relative bg-gradient-to-br from-blue-600 via-purple-600 to-blue-800 text-white ">
         <div className="absolute inset-0 bg-black opacity-20"></div>
         <ThreeBackground className="opacity-30" />
         <FloatingParticles className="opacity-20" particleCount={50} />

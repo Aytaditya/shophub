@@ -1,38 +1,63 @@
+# main.py
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from dotenv import load_dotenv
-from langchain.chat_models import init_chat_model
-from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.prebuilt import create_react_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
+from dotenv import load_dotenv
 import os
 
 load_dotenv()
 
 app = FastAPI()
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"], allow_credentials=True,
+    allow_methods=["*"], allow_headers=["*"]
 )
 
-llm = init_chat_model(
-    "gemini-2.0-flash",
-    model_provider="google_genai",
-    google_api_key=os.getenv("GOOGLE_API_KEY")
-)
+class AgentRequest(BaseModel):
+    question: str
+    email: str | None = None  # optional
 
-class ChatRequest(BaseModel):
-    query: str
+agent = None
 
-@app.get("/")
-async def root():
-    return {"message": "Hello, World!"}
 
-@app.post('/chat')
-async def chat(request: ChatRequest):
-    result = llm.invoke(request.query)
-    return JSONResponse(content={"response": result.content})
+# ---------- start MCP agent on FastAPI startup --------------------- #
+@app.on_event("startup")
+async def init_agent():
+    global agent
+    client = MultiServerMCPClient(
+        {
+            "product": {
+                "command": "python",
+                "args": ["product_search.py"],  # path to new tool‑server
+                "transport": "stdio",
+            }
+        }
+    )
+    tools = await client.get_tools()
+    print("[INIT] Tools registered:", [t.name for t in tools])
+
+    agent = create_react_agent(
+        ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0),
+        tools,
+    )
+    print("[INIT] MCP REACT agent ready ✅")
+
+
+# ---------- chat endpoint ----------------------------------------- #
+@app.post("/agent")
+async def agent_chat(body: AgentRequest):
+    if agent is None:
+        return {"error": "Agent not ready yet."}
+
+    user_msg = body.question
+    prompt = {"messages": [{"role": "user", "content": user_msg}]}
+
+    result = await agent.ainvoke(prompt)
+    if isinstance(result, dict) and "messages" in result:
+        return {"answer": result["messages"][-1].content}
+
+    return {"error": "Unexpected agent response"}
