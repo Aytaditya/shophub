@@ -5,8 +5,9 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
-from product_search import get_vectordb
+from product_search import get_vectordb    # still unused for now
 import os, asyncio, re
+
 
 load_dotenv()
 
@@ -16,17 +17,68 @@ app.add_middleware(
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
 
 class AgentRequest(BaseModel):
     question: str
     email: str | None = None
+    reset: bool | None = False          # 🔸 allow the FE to clear history if it wants
 
 agent = None
 tools = None
-user_states = {}
 
+# 🔸 {email: {...}} lives only in RAM ‑‑ replace with Redis if you need persistence
+user_states: dict[str, dict] = {}
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+def get_user_state(email: str) -> dict:
+    if email not in user_states:
+        user_states[email] = {
+            "connected": False,
+            "awaiting_name": False,
+            "name_set": False,
+            "name": None,
+            "history": [],              # 🔸 rolling chat history
+        }
+    return user_states[email]
+
+def is_likely_name(text: str) -> bool:
+    words = text.strip().split()
+    if not 1 <= len(words) <= 3:
+        return False
+    common = {
+        "hi", "hello", "how", "what", "where", "when",
+        "why", "can", "could", "would", "will",
+    }
+    if any(w.lower() in common for w in words):
+        return False
+    return all(w.replace("'", "").isalpha() for w in words)
+
+def extract_name_from_text(text: str) -> str | None:
+    patterns = [
+        r"\b(?:my name is|i am|i'm)\s+([a-zA-Z]+(?: [a-zA-Z]+)*)",
+        r"\b(?:call me|name me)\s+([a-zA-Z]+(?: [a-zA-Z]+)*)",
+        r"\b(?:it's|its)\s+([a-zA-Z]+(?: [a-zA-Z]+)*)",
+        r"\bhi[, ]+([a-zA-Z]+)\b",
+    ]
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            return m.group(1).title().strip()
+    return None
+
+async def invoke_tool(tool_name: str, **kwargs):
+    tool = next((t for t in tools if t.name == tool_name), None)
+    if not tool:
+        raise ValueError(f"Tool {tool_name} not found")
+    return await tool.ainvoke(kwargs) if asyncio.iscoroutinefunction(tool.ainvoke) else tool.invoke(kwargs)
+
+# ------------------------------------------------------------
+# Startup – create MCP REACT agent
+# ------------------------------------------------------------
 @app.on_event("startup")
 async def init_agent():
     global agent, tools
@@ -46,97 +98,15 @@ async def init_agent():
         ChatGoogleGenerativeAI(
             model="gemini-2.0-flash",
             temperature=0,
-            system_message="When you mention a product name, surround it in **double asterisks**."
+            system_message="When you mention a product name, surround it in **double asterisks**.",
         ),
         tools,
     )
     print("[INIT] MCP REACT agent ready ✅")
 
-
-# def extract_products_from_answer(answer: str) -> list[dict]:
-#     from langchain_community.vectorstores import Chroma
-
-#     try:
-#         vdb = get_vectordb()
-#         all_products = vdb.similarity_search("all", k=100)
-#         all_product_names = {doc.metadata.get("name", "").lower(): doc.metadata for doc in all_products}
-#         all_categories = {doc.metadata.get("category", "").lower(): doc.metadata for doc in all_products}
-
-#         lower_text = answer.lower()
-#         final_matches: list[dict] = []
-#         seen = set()
-
-#         # 1. Match bolded names
-#         for name in re.findall(r"\*\*(.*?)\*\*", answer):
-#             key = name.strip().lower()
-#             if key in all_product_names and key not in seen:
-#                 final_matches.append(all_product_names[key])
-#                 seen.add(key)
-
-#         # 2. Fuzzy substring match
-#         if not final_matches:
-#             for prod_name, meta in all_product_names.items():
-#                 if prod_name not in seen:
-#                     prod_keywords = set(prod_name.split())
-#                     if any(k in lower_text for k in prod_keywords):
-#                         final_matches.append(meta)
-#                         seen.add(prod_name)
-
-#         # 3. Category fallback
-#         if not final_matches:
-#             for cat, meta in all_categories.items():
-#                 if cat and cat in lower_text:
-#                     final_matches.append(meta)
-#                     break
-
-#         print(f">>> [EXTRACTOR] Final products extracted: {final_matches}")
-#         return final_matches
-
-#     except Exception as e:
-#         print(f"[ERROR] Failed to extract product info: {e}")
-#         return []
-
-
-
-async def invoke_tool(tool_name: str, **kwargs):
-    tool_obj = next((t for t in tools if t.name == tool_name), None)
-    if not tool_obj:
-        raise ValueError(f"Tool {tool_name} not found")
-    if asyncio.iscoroutinefunction(tool_obj.ainvoke):
-        return await tool_obj.ainvoke(kwargs)
-    return tool_obj.invoke(kwargs)
-
-
-def get_user_state(email: str) -> dict:
-    if email not in user_states:
-        user_states[email] = {
-            "connected": False,
-            "awaiting_name": False,
-            "name_set": False
-        }
-    return user_states[email]
-
-def is_likely_name(text: str) -> bool:
-    words = text.strip().split()
-    if len(words) > 3:
-        return False
-    common_phrases = ["hi", "hello", "how", "what", "where", "when", "why", "can", "could", "would", "will"]
-    if any(word.lower() in common_phrases for word in words):
-        return False
-    return all(word.replace("'", "").isalpha() for word in words)
-
-def extract_name_from_text(text: str) -> str | None:
-    patterns = [
-        r"\b(?:my name is|i am|i'm)\s+([a-zA-Z]+(?: [a-zA-Z]+)*)",
-        r"\b(?:call me|name me)\s+([a-zA-Z]+(?: [a-zA-Z]+)*)",
-        r"\b(?:it's|its)\s+([a-zA-Z]+(?: [a-zA-Z]+)*)",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            return match.group(1).strip().title()
-    return None
-
+# ------------------------------------------------------------
+# Routes
+# ------------------------------------------------------------
 @app.post("/agent")
 async def agent_chat(body: AgentRequest):
     if agent is None:
@@ -144,81 +114,84 @@ async def agent_chat(body: AgentRequest):
 
     email = body.email or "guest@example.com"
     user_input = body.question.strip()
-    user_state = get_user_state(email)
+    if body.reset:
+        user_states.pop(email, None)     # 🔸 optional FE reset hook
+    state = get_user_state(email)
 
-    print(f"[DEBUG] User {email} state: {user_state}, Input: '{user_input}'")
-
-    if user_state["awaiting_name"]:
-        extracted_name = extract_name_from_text(user_input)
-        if extracted_name:
+    # 1️⃣ — handle “waiting for name” branch -----------------------------------
+    if state["awaiting_name"]:
+        extracted = extract_name_from_text(user_input) or (user_input.title() if is_likely_name(user_input) else None)
+        if extracted:
             try:
-                result = await invoke_tool("set_user_name", name=extracted_name, email=email)
-                user_state["awaiting_name"] = False
-                user_state["name_set"] = True
-                return {"answer": result}
+                resp = await invoke_tool("set_user_name", name=extracted, email=email)
+                state.update({"awaiting_name": False, "name_set": True, "name": extracted})
+                return {"answer": resp}
             except Exception as e:
-                print(f"[ERROR] set_user_name failed: {e}")
-                return {"error": "Failed to set name"}
-        elif is_likely_name(user_input):
-            name = user_input.title()
-            try:
-                result = await invoke_tool("set_user_name", name=name, email=email)
-                user_state["awaiting_name"] = False
-                user_state["name_set"] = True
-                return {"answer": result}
-            except Exception as e:
-                print(f"[ERROR] set_user_name failed: {e}")
-                return {"error": "Failed to set name"}
-        else:
-            return {"answer": "I'm still waiting for your name. What should I call you?"}
+                print("[ERROR] set_user_name failed:", e)
+                return {"error": "Failed to set your name."}
+        return {"answer": "I'm still waiting for your name. What should I call you?"}
 
-    if not user_state["connected"]:
-        print(f"[MCP] Connecting user: {email}")
+    # 2️⃣ — first‑time connection branch ---------------------------------------
+    if not state["connected"]:
         try:
-            response = await invoke_tool("connect_user", email=email)
-            user_state["connected"] = True
-            if "What should I call you?" in response:
-                user_state["awaiting_name"] = True
-                return {"answer": response}
-            else:
-                user_state["name_set"] = True
-                return {"answer": response}
-        except Exception as e:
-            print(f"[ERROR] connect_user failed: {e}")
-            return {"error": "Failed to connect user"}
+            resp = await invoke_tool("connect_user", email=email)
+            state["connected"] = True
 
-    extracted_name = extract_name_from_text(user_input)
-    if extracted_name:
+            # If connect_user itself greeted with a name, store it
+            maybe_name = extract_name_from_text(resp or "")
+            if maybe_name:
+                state.update({"name": maybe_name, "name_set": True})
+
+            if "What should I call you?" in (resp or ""):
+                state["awaiting_name"] = True
+            return {"answer": resp}
+        except Exception as e:
+            print("[ERROR] connect_user failed:", e)
+            return {"error": "Failed to connect user."}
+
+    # 3️⃣ — user voluntarily tells their name mid‑conversation -----------------
+    extracted = extract_name_from_text(user_input)
+    if extracted:
         try:
-            result = await invoke_tool("set_user_name", name=extracted_name, email=email)
-            user_state["name_set"] = True
-            return {"answer": result}
+            resp = await invoke_tool("set_user_name", name=extracted, email=email)
+            state.update({"name": extracted, "name_set": True})
+            return {"answer": resp}
         except Exception as e:
-            print(f"[ERROR] set_user_name failed: {e}")
+            print("[ERROR] set_user_name failed:", e)
 
+    # 4️⃣ — normal LLM call ----------------------------------------------------
     try:
-        prompt = {"messages": [{"role": "user", "content": user_input}]}
-        result = await agent.ainvoke(prompt)
-
-        if isinstance(result, dict) and "messages" in result:
-            answer_text = result["messages"][-1].content
-            print("\n===== RAW ANSWER FROM LLM =====\n", answer_text, "\n===============================\n")
-
-            #products = extract_products_from_answer(answer_text)
-
-            return {
-                "answer": answer_text,
-                # "products": products,
-                # "debug": {
-                #     "raw_answer": answer_text[:500],
-                #     "num_products": len(products),
-                # },
+        # 🔸 build message stack: system (with name) + history + new user msg
+        sys_msg = None
+        if state["name_set"] and state["name"]:
+            sys_msg = {
+                "role": "system",
+                "content": f"The user's name is {state['name']}. "
+                           f"Always greet or address them by name in every reply.",
             }
+
+        history = state["history"][-20:]    # keep at most 10 pairs (=20 msgs)
+        messages = ([sys_msg] if sys_msg else []) + history + [
+            {"role": "user", "content": user_input}
+        ]
+
+        result = await agent.ainvoke({"messages": messages})
+
+        # Extract assistant reply text
+        if isinstance(result, dict) and "messages" in result:
+            reply = result["messages"][-1].content
         else:
-            return {"answer": str(result)}
+            reply = str(result)
+
+        # 🔸 update history
+        history.append({"role": "user", "content": user_input})
+        history.append({"role": "assistant", "content": reply})
+        state["history"] = history[-20:]    # truncate again
+
+        return {"answer": reply}
     except Exception as e:
-        print(f"[ERROR] Agent processing failed: {e}")
-        return {"error": "Failed to process your request"}
+        print("[ERROR] Agent processing failed:", e)
+        return {"error": "Failed to process your request."}
 
 @app.get("/health")
 async def health_check():

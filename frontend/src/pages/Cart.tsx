@@ -92,7 +92,7 @@ const Cart: React.FC = () => {
 
                   <div className="flex items-center space-x-4">
                     <span className="text-lg font-semibold text-gray-900">
-                      ${(item.price * item.quantity).toFixed(2)}
+                    ₹{(item.price * item.quantity).toFixed(2)}
                     </span>
                     <button
                       onClick={() => removeItem(item.id)}

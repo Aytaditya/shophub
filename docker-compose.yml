@@ -13,8 +13,29 @@ services:
     networks:
       - mcp-net
 
+  neo4j:
+    image: neo4j:5.20
+    container_name: neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/test1234
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+      - NEO4J_dbms_security_procedures_allowlist=apoc.*,apoc.meta.*,apoc.merge.*
+      - NEO4J_apoc_export_file_enabled=true
+      - NEO4J_apoc_import_file_enabled=true
+      - NEO4J_apoc_import_file_use__neo4j__config=true
+    volumes:
+      - neo4j_data:/data
+      - ./import:/var/lib/neo4j/import
+    networks:
+      - mcp-net
+
 volumes:
   mongodb_data:
+  neo4j_data:
 
 networks:
   mcp-net:
